@@ -1,0 +1,681 @@
+type: edu
+files:
+- name: src/metro/Main.java
+  visible: true
+  text: |
+    package metro;
+
+    import java.io.FileNotFoundException;
+
+    public class Main {
+        public static void main(String[] args) {
+            String fileName;
+            if (args.length > 0) {
+                fileName = args[0];
+            } else {
+                fileName = "prague_w_time.json";
+            }
+            FileHandler fileHandler = new FileHandler(fileName);
+            fileHandler.readFile();
+            Metro metro = new Metro();
+            fileHandler.getStations().forEach(metro::addLine);
+            CommandHandler commandHandler = new CommandHandler(metro);
+            commandHandler.readCommand();
+        }
+    }
+  learner_created: false
+- name: src/metro/Station.java
+  visible: true
+  text: |
+    package metro;
+
+    import com.google.gson.annotations.SerializedName;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class Station {
+        private final String name;
+        private Station next;
+        private Station previous;
+
+        private final List<Transfer> transfers;
+
+        private final int distanceToNext;
+
+        static class Transfer {
+            @SerializedName("line")
+            String lineName;
+            @SerializedName("station")
+            String stationName;
+
+            Transfer(String lineName, String stationName) {
+                this.lineName = lineName;
+                this.stationName = stationName;
+            }
+
+            @Override
+            public String toString() {
+                return stationName + "(" + lineName + ")";
+            }
+        }
+
+        public Station(String name, Station previous, Station next, int distanceToNext) {
+            this.name = name;
+            this.distanceToNext = distanceToNext;
+            this.previous = previous;
+            this.next = next;
+            transfers = new ArrayList<>();
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public Station getNext() {
+            return next;
+        }
+
+        public Station getPrevious() {
+            return previous;
+        }
+
+        public List<Transfer> getTransfers() {
+            return transfers;
+        }
+
+        public int getDistanceToNext() {
+            return distanceToNext;
+        }
+
+        public void setNext(Station next) {
+            this.next = next;
+        }
+
+        public void setPrevious(Station previous) {
+            this.previous = previous;
+        }
+
+
+        public void setTransfer(String lineName, String stationName) {
+            Transfer transfer = new Transfer(lineName, stationName);
+            setTransfer(transfer);
+        }
+        public void setTransfer(Transfer transfer) {
+            if (!transfers.contains(transfer)) {
+                transfers.add(transfer);
+            }
+        }
+
+        public void removeTransfer(String stationName) {
+            transfers.removeIf(transfer -> transfer.stationName.equals(stationName));
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.append(name);
+            if (!transfers.isEmpty()) {
+                transfers.forEach(t -> stringBuilder.append(String.format(" - %s (%s)", t.stationName, t.lineName)));
+            }
+            return stringBuilder.toString();
+        }
+    }
+  learner_created: false
+- name: src/metro/Line.java
+  visible: true
+  text: |-
+    package metro;
+
+    public class Line {
+        private final String name;
+
+        private Station head;
+
+        private Station tail;
+
+        public Line(String name) {
+            this.name = name;
+            this.head = null;
+            this.tail = null;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public Station getHead() {
+            return head;
+        }
+
+        public Station getTail() {
+            return tail;
+        }
+
+        public void addHead(String name, int distanceToNext) {
+            Station oldHead = head;
+            Station newStation = new Station(name, null, oldHead, distanceToNext);
+            head = newStation;
+            if (oldHead == null) {
+                tail = newStation;
+            } else {
+                oldHead.setPrevious(newStation);
+            }
+        }
+
+        public void addTail(String name, int distanceToNext) {
+            Station oldTail = tail;
+            Station newStation = new Station(name, tail, null, distanceToNext);
+            tail = newStation;
+            if (oldTail == null) {
+                head = newStation;
+            } else {
+                oldTail.setNext(newStation);
+            }
+        }
+
+        public void remove(String name) {
+            Station stationToRemove = getStation(name);
+            stationToRemove.getPrevious().setNext(stationToRemove.getNext());
+            stationToRemove.getNext().setPrevious(stationToRemove.getPrevious());
+        }
+
+        public Station getStation(String name) {
+            Station current = head;
+            while (current != null) {
+                if (current.getName().equals(name)) {
+                    return current;
+                }
+                current = current.getNext();
+            }
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.append("depot").append("\n");
+            Station current = head;
+            while (current != null) {
+                stringBuilder.append(current).append("\n");
+                current = current.getNext();
+            }
+            stringBuilder.append("depot").append("\n");
+            return stringBuilder.toString();
+        }
+    }
+  learner_created: false
+- name: src/metro/Metro.java
+  visible: true
+  text: |
+    package metro;
+
+    import java.util.ArrayList;
+    import java.util.List;
+
+    public class Metro {
+        private final List<Line> lines;
+
+        public Metro() {
+            this.lines = new ArrayList<>();
+        }
+
+        public List<Line> getLines() {
+            return lines;
+        }
+
+        public Line getLine(String lineName) {
+            for (Line line : lines) {
+                if (line.getName().equals(lineName)) {
+                    return line;
+                }
+            }
+            return null;
+        }
+
+        public void addLine(Line line) {
+            if (!lines.contains(line)) {
+                lines.add(line);
+            }
+        }
+
+    }
+  learner_created: false
+- name: src/metro/Commands.java
+  visible: true
+  text: |
+    package metro;
+
+    public enum Commands {
+        UNKNOWN ("null"),
+        EXIT ("/exit"),
+        ROUTE ("/route"),
+
+        ROUTE_FAST ("/fastest-route"),
+        CONNECT ("/connect"),
+        OUTPUT ("/output"),
+        APPEND ("/append"),
+        ADD_HEAD ("/add-head"),
+        REMOVE("/remove");
+
+        private final String inputString;
+
+        Commands(String input) {
+            inputString = input;
+        }
+
+        public String getInputString() {
+            return inputString;
+        }
+    }
+  learner_created: false
+- name: src/metro/FileHandler.java
+  visible: true
+  text: |
+    package metro;
+
+    import com.google.gson.Gson;
+    import com.google.gson.reflect.TypeToken;
+
+    import java.io.*;
+    import java.nio.file.Files;
+    import java.nio.file.Path;
+    import java.nio.file.Paths;
+    import java.util.ArrayList;
+    import java.util.HashMap;
+    import java.util.List;
+    import java.util.Map;
+
+    public class FileHandler {
+        private final Path path;
+        private Map<String, Map<Integer, StationAdapter>> stations;
+
+        FileHandler(String filename) {
+            this.path = Path.of(filename);
+            this.stations = new HashMap<>();
+        }
+
+        static class StationAdapter {
+            String name;
+            List<Station.Transfer> transfer;
+            int time;
+        }
+
+        public void readFile() {
+            Gson gson = new Gson();
+            TypeToken<Map<String, Map<Integer, StationAdapter>>> typeToken = new TypeToken<>(){};
+            try (BufferedReader bufferedReader = Files.newBufferedReader(path)) {
+                this.stations = gson.fromJson(bufferedReader, typeToken);
+            } catch (IOException e) {
+                System.out.println("Error! Such a file doesn't exist!");
+            }
+
+        }
+
+        public List<Line> getStations() {
+            List<Line> lines = new ArrayList<>();
+            for (Map.Entry<String, Map<Integer, StationAdapter>> entry : this.stations.entrySet()) {
+                Line line = new Line(entry.getKey());
+                for (StationAdapter stationAdapter : entry.getValue().values()) {
+                    line.addTail(stationAdapter.name, stationAdapter.time);
+                    if (!stationAdapter.transfer.isEmpty()) {
+                        stationAdapter.transfer.forEach(line.getTail()::setTransfer);
+                    }
+                }
+                lines.add(line);
+            }
+            return lines;
+        }
+    }
+  learner_created: false
+- name: src/metro/CommandHandler.java
+  visible: true
+  text: "package metro;\n\nimport java.util.*;\n\npublic class CommandHandler {\n\
+    \    Scanner scanner;\n    Metro metro;\n    static final String INVALID_COMMAND\
+    \ = \"Invalid command.\";\n    static final String INVALID_PARAMETERS_COUNT =\
+    \ \"Invalid parameters count %d instead of %d.%n\";\n    static final String NO_LINE\
+    \ = \"No such line %s in metro.%n\";\n    static final String NO_STATION = \"\
+    No such station %s at line %s.%n\";\n    \n    CommandHandler(Metro metro) {\n\
+    \        this.metro = metro;\n        scanner = new Scanner(System.in);\n    }\n\
+    \    \n    public void readCommand() {\n        List<String> parameters;\n   \
+    \     parameters = parseInput(scanner.nextLine());\n        Commands actualCommand\
+    \ = parseCommand(parameters.remove(0));\n        switch (actualCommand) {\n  \
+    \          case APPEND -> append(\"tail\", parameters);\n            case ADD_HEAD\
+    \ -> append(\"head\", parameters);\n            case REMOVE -> remove(parameters);\n\
+    \            case OUTPUT -> output(parameters);\n            case CONNECT -> connect(parameters);\n\
+    \            case ROUTE, ROUTE_FAST -> route(parameters, actualCommand);\n   \
+    \         case EXIT -> System.exit(1);\n            default -> System.out.println(INVALID_COMMAND);\n\
+    \        }\n        readCommand();\n    }\n\n    private void route(List<String>\
+    \ parameters, Commands command) {\n        if (isParametersCountOK(parameters,\
+    \ 4)) {\n            String lineName1 = parameters.get(0);\n            String\
+    \ lineName2 = parameters.get(2);\n            if (isLinePresent(lineName1) &&\
+    \ isLinePresent(lineName2)) {\n                Line line1 = metro.getLine(lineName1);\n\
+    \                Line line2 = metro.getLine(lineName2);\n                String\
+    \ stationName1 = parameters.get(1);\n                String stationName2 = parameters.get(3);\n\
+    \                if (isStationPresent(line1, stationName1) && isStationPresent(line2,\
+    \ stationName2)) {\n                    Station station1 = line1.getStation(stationName1);\n\
+    \                    Station station2 = line2.getStation(stationName2);\n    \
+    \                Map<Station, Integer> distances = setMaxDistance();\n       \
+    \             if (command == Commands.ROUTE) {\n                        printRoute(makeRoute(station1,\
+    \ station2));\n                    }\n                    if (command == Commands.ROUTE_FAST)\
+    \ {\n                        List<Station> routes = makeFastRoute(station1, station2,\
+    \ distances);\n                        int distance = distances.get(station2);\n\
+    \                        printRoute(routes, distance);\n                    }\n\
+    \                }\n            }\n        }\n    }\n\n    private void printRoute(List<Station>\
+    \ route, int distance) {\n        Station previous = route.get(0);\n        for\
+    \ (Station station : route) {\n            if (!previous.getTransfers().isEmpty())\
+    \ {\n                for (Station.Transfer t : previous.getTransfers()) {\n  \
+    \                  if (t.stationName.equals(station.getName())) {\n          \
+    \              System.out.println(\"Transition to line \" + t.lineName);\n   \
+    \                 }\n                }\n            }\n            System.out.println(station.getName());\n\
+    \            previous = station;\n        }\n        if (distance != 0) {\n  \
+    \          System.out.println(distance);\n        }\n    }\n\n    private void\
+    \ printRoute(List<Station> route) {\n        printRoute(route, 0);\n    }\n\n\
+    \    private List<Station> makeRoute(Station station1, Station station2) {\n \
+    \       Set<Station> visited = new HashSet<>();\n        visited.add(null);\n\
+    \        Deque<LinkedList<Station>> routes = new ArrayDeque<>();\n        LinkedList<Station>\
+    \ startRoute = new LinkedList<>();\n        startRoute.add(station1);\n      \
+    \  routes.addLast(startRoute);\n        while (!routes.isEmpty()) {\n        \
+    \    LinkedList<Station> currentRoute = routes.removeFirst();\n            if\
+    \ (currentRoute.getLast() == station2) {\n                return currentRoute;\n\
+    \            }\n            List<Station> neighbours = getNeighbours(currentRoute.getLast());\n\
+    \            for (Station neighbor : neighbours) {\n                if (!visited.contains(neighbor))\
+    \ {\n                    visited.add(neighbor);\n                    LinkedList<Station>\
+    \ newRoute = new LinkedList<>(currentRoute);\n                    newRoute.add(neighbor);\n\
+    \                    routes.addLast(newRoute);\n                }\n          \
+    \  }\n        }\n        return Collections.emptyList();\n    }\n\n    private\
+    \ List<Station> makeFastRoute(Station station1, Station station2, Map<Station,\
+    \ Integer> distances) {\n        Map<Station, List<Station>> routes = new HashMap<>();\n\
+    \        distances.put(station1, 0);\n        Set<Station> visited = new HashSet<>();\n\
+    \        visited.add(null);\n        Set<Station> toVisit = new HashSet<>();\n\
+    \        toVisit.add(station1);\n        while (!toVisit.isEmpty()) {\n      \
+    \      Station current = getNearestStation(toVisit, distances);\n            toVisit.remove(current);\n\
+    \            for (Map.Entry<Station, Integer> neighbor : getNeighborsWeighted(current).entrySet())\
+    \ {\n                if (!visited.contains(neighbor.getKey())) {\n           \
+    \         checkRoute(neighbor.getKey(), neighbor.getValue(), current, distances,\
+    \ routes);\n                    toVisit.add(neighbor.getKey());\n            \
+    \    }\n            }\n            visited.add(current);\n        }\n        List<Station>\
+    \ route = routes.get(station2);\n        route.add(station2);\n        return\
+    \ route;\n    }\n\n    private void checkRoute(Station next, int travelTime, Station\
+    \ current, Map<Station, Integer> distances, Map<Station, List<Station>> routes)\
+    \ {\n        int currentDistance = distances.get(current);\n        int nextDistance\
+    \ = distances.get(next);\n        if (currentDistance + travelTime < nextDistance)\
+    \ {\n            distances.put(next, currentDistance + travelTime);\n        \
+    \    List<Station> newRoute = new ArrayList<>();\n            if (routes.containsKey(current))\
+    \ {\n                newRoute.addAll(routes.get(current));\n            }\n  \
+    \          newRoute.add(current);\n            routes.put(next, newRoute);\n \
+    \       }\n    }\n\n    private Station getNearestStation(Set<Station> toVisit,\
+    \ Map<Station, Integer> distances) {\n        Station nearestStation = null;\n\
+    \        int minDistance = Integer.MAX_VALUE;\n        for (Station station :\
+    \ toVisit) {\n            int distance = distances.get(station);\n           \
+    \ if (distance < minDistance) {\n                minDistance = distance;\n   \
+    \             nearestStation = station;\n            }\n        }\n        return\
+    \ nearestStation;\n    }\n\n    private Map<Station, Integer> setMaxDistance()\
+    \ {\n        Map<Station, Integer> distances = new HashMap<>();\n        for (Line\
+    \ line : metro.getLines()) {\n            Station current = line.getHead();\n\
+    \            while (current != null) {\n                distances.put(current,\
+    \ Integer.MAX_VALUE);\n                current = current.getNext();\n        \
+    \    }\n        }\n        return distances;\n    }\n\n    private List<Station>\
+    \ getNeighbours (Station station) {\n        List<Station> neighbors = new ArrayList<>();\n\
+    \        if (!station.getTransfers().isEmpty()) {\n            for (Station.Transfer\
+    \ transfer : station.getTransfers()) {\n                neighbors.add(metro.getLine(transfer.lineName).getStation(transfer.stationName));\n\
+    \            }\n        }\n        neighbors.add(station.getNext());\n       \
+    \ neighbors.add(station.getPrevious());\n        return neighbors;\n    }\n\n\
+    \    private Map<Station, Integer> getNeighborsWeighted (Station station) {\n\
+    \        if (station == null) {\n            return new HashMap<>();\n       \
+    \ }\n        Map<Station, Integer> neighbors = new HashMap<>();\n        if (!station.getTransfers().isEmpty())\
+    \ {\n            for (Station.Transfer transfer : station.getTransfers()) {\n\
+    \                neighbors.put(metro.getLine(transfer.lineName).getStation(transfer.stationName),\
+    \ 5);\n            }\n        }\n        if (station.getNext() != null) {\n  \
+    \          neighbors.put(station.getNext(), station.getDistanceToNext());\n  \
+    \      }\n        if (station.getPrevious() != null) {\n            neighbors.put(station.getPrevious(),\
+    \ station.getPrevious().getDistanceToNext());\n        }\n        return neighbors;\n\
+    \    }\n\n    private void connect(List<String> parameters) {\n        if (isParametersCountOK(parameters,\
+    \ 4)) {\n            String lineName1 = parameters.get(0);\n            String\
+    \ lineName2 = parameters.get(2);\n            if (isLinePresent(lineName1) &&\
+    \ isLinePresent(lineName2)) {\n                Line line1 = metro.getLine(lineName1);\n\
+    \                Line line2 = metro.getLine(lineName2);\n                String\
+    \ stationName1 = parameters.get(1);\n                String stationName2 = parameters.get(3);\n\
+    \                if (isStationPresent(line1, stationName1) && isStationPresent(line2,\
+    \ stationName2)) {\n                    line1.getStation(stationName1).setTransfer(lineName2,\
+    \ stationName2);\n                    line2.getStation(stationName2).setTransfer(lineName1,\
+    \ stationName1);\n                }\n            }\n        }\n    }\n\n    private\
+    \ void output(List<String> parameters) {\n        if (isParametersCountOK(parameters,\
+    \ 1)) {\n            String lineName = parameters.get(0);\n            if (isLinePresent(lineName))\
+    \ {\n                System.out.println(metro.getLine(lineName));\n          \
+    \  }\n        }\n    }\n\n    private void append(String side, List<String> parameters)\
+    \ {\n        if (isParametersCountOK(parameters, 2) || isParametersCountOK(parameters,\
+    \ 3)) {\n            String lineName = parameters.get(0);\n            if (isLinePresent(lineName))\
+    \ {\n                Line line = metro.getLine(lineName);\n                String\
+    \ stationName = parameters.get(1);\n                int distanceToNext;\n    \
+    \            if (isParametersCountOK(parameters, 3)) {\n                    distanceToNext\
+    \ = Integer.parseInt(parameters.get(2));\n                } else {\n         \
+    \           distanceToNext = 0;\n                }\n                if (side.equals(\"\
+    tail\")) {\n                    line.addTail(stationName, distanceToNext);\n \
+    \               } else {\n                    line.addHead(stationName, distanceToNext);\n\
+    \                }\n            }\n        }\n    }\n\n    private void remove(List<String>\
+    \ parameters) {\n        if (isParametersCountOK(parameters, 2)) {\n         \
+    \   String lineName = parameters.get(0);\n            if (isLinePresent(lineName))\
+    \ {\n                Line line = metro.getLine(lineName);\n                String\
+    \ stationName = parameters.get(1);\n                if (isStationPresent(line,\
+    \ stationName)) {\n                    Station toRemove = line.getStation(stationName);\n\
+    \                    if (!toRemove.getTransfers().isEmpty()) {\n             \
+    \           for (Station.Transfer transfer : toRemove.getTransfers()) {\n    \
+    \                        Line transferLine = metro.getLine(transfer.lineName);\n\
+    \                            Station transferStation = transferLine.getStation(transfer.stationName);\n\
+    \                            transferStation.removeTransfer(stationName);\n  \
+    \                      }\n                    }\n                    line.remove(stationName);\n\
+    \                }\n            }\n\n        }\n    }\n\n    private boolean isParametersCountOK(List<String>\
+    \ parameters, int count) {\n        if (parameters.size() != count) {\n      \
+    \      System.out.println(INVALID_PARAMETERS_COUNT);\n            return false;\n\
+    \        }\n        return true;\n    }\n\n    private boolean isLinePresent(String\
+    \ lineName) {\n         if (metro.getLine(lineName) == null) {\n             System.out.printf(NO_LINE,\
+    \ lineName);\n             return false;\n         }\n         return true;\n\
+    \    }\n\n    private boolean isStationPresent(Line line, String stationName)\
+    \ {\n        Station station = line.getStation(stationName);\n        if (station\
+    \ == null) {\n            System.out.printf(NO_STATION, stationName, line.getName());\n\
+    \            return false;\n        }\n        return true;\n    }\n\n    private\
+    \ Commands parseCommand(String input) {\n        for (Commands command : Commands.values())\
+    \ {\n            if (command.getInputString().equals(input)){\n              \
+    \  return command;\n            }\n        }\n        return Commands.UNKNOWN;\n\
+    \    }\n\n    private List<String> parseInput(String line) {\n        List<String>\
+    \ list = new ArrayList<>();\n        try(Scanner inputScanner = new Scanner(line))\
+    \ {\n            while (inputScanner.hasNext()) {\n                String token\
+    \ = inputScanner.next();\n                if (token.matches(\"\\\"\\\\w+\")) {\n\
+    \                    String appendix;\n                    do {\n            \
+    \            appendix = inputScanner.next();\n                        token =\
+    \ new StringBuilder().append(token).append(\" \").append(appendix).toString();\n\
+    \                    } while (!appendix.matches(\"\\\\w+\\\"\"));\n          \
+    \      }\n                list.add(token.replace(\"\\\"\", \"\"));\n         \
+    \   }\n        }\n        return list;\n    }\n}\n"
+  learner_created: false
+- name: test/london.json
+  visible: true
+  learner_created: false
+- name: test/Tests.java
+  visible: false
+  text: |
+    import org.hyperskill.hstest.dynamic.DynamicTest;
+    import org.hyperskill.hstest.stage.StageTest;
+    import org.hyperskill.hstest.testcase.CheckResult;
+    import org.hyperskill.hstest.testing.TestedProgram;
+
+    public class Tests extends StageTest<String> {
+        @DynamicTest(order = 1)
+        CheckResult simpleRouteTest() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/route \"Waterloo & City line\" \"Waterloo\" \"Waterloo & City line\" \"Bank\"");
+            String[] sOutput = output.trim().split("\n");
+
+            if (sOutput.length != 2) {
+                return CheckResult.wrong("There is an incorrect number of station in the route");
+            }
+
+            if (!sOutput[0].trim().equals("Waterloo") || !sOutput[1].trim().equals("Bank")) {
+                return CheckResult.wrong("There are incorrect stations in the route");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 2)
+        CheckResult severalLinesRoute() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/route \"Victoria line\" \"Victoria\" \"Northern line\" \"Oval\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Victoria", "Pimlico", "Vauxhall", "Stockwell", "Northern line", "Stockwell", "Oval"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("There is an incorrect number of station in the route");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 3)
+        CheckResult severalLines() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/route \"Victoria line\" \"Green Park\" \"Northern line\" \"Oval\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Green Park", "Jubilee line", "Green Park", "Westminster", "Waterloo",
+                "Northern line", "Waterloo", "Kennington", "Oval"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("There is an incorrect number of station in the route");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed.");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 4)
+        CheckResult forkTest() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/route \"Piccadilly line\" \"Heathrow Terminal 5\" " +
+                "\"Piccadilly line\" \"Hounslow West\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Heathrow Terminal 5", "Heathrow Terminals 1-2-3", "Hatton Cross", "Hounslow West"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("There is an incorrect number of station in the route");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed.");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 5)
+        CheckResult forkTest2() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/route \"Piccadilly line\" \"Hatton Cross\" " +
+                "\"Piccadilly line\" \"Heathrow Terminal 4\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Hatton Cross", "Heathrow Terminal 4"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("There is an incorrect number of station in the route");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed. The fork was ignored.");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 6)
+        CheckResult simpleTimeTest() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/fastest-route \"District line\" \"Richmond\" \"District line\" \"Gunnersbury\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Richmond", "Kew Gardens", "Gunnersbury", "12"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("Your program printed an incorrect number of stations in the route. Expected 3 stations and the total time!");
+            }
+
+            if (!sOutput[sOutput.length - 1].contains(route[route.length - 1])) {
+                return CheckResult.wrong("The program incorrectly calculates the trip duration.");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed.");
+            }
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 7)
+        CheckResult advancedTimeTest() {
+            TestedProgram main = new TestedProgram();
+            main.start("./test/london.json");
+
+            String output = main.execute("/fastest-route \"Victoria line\" \"Brixton\" \"Northern line\" \"Angel\"");
+            String[] sOutput = output.toLowerCase().split("\n");
+
+            String[] route = {"Brixton", "Stockwell", "Northern line", "Stockwell", "Oval", "Kennington", "Waterloo",
+                "Waterloo & City line", "Waterloo", "Bank",
+                "Northern line", "Bank", "Moorgate", "Old Street", "Angel", "47"};
+
+            if (sOutput.length != route.length) {
+                return CheckResult.wrong("Your program printed an incorrect number of stations in the route. Expected 9 stations, 3 transitions and the total time!");
+            }
+
+            if (!sOutput[sOutput.length - 1].contains(route[route.length - 1])) {
+                return CheckResult.wrong("The program incorrectly calculates the trip duration. " +
+                    "Maybe the wrong way was chosen.");
+            }
+
+            if (assertRoute(sOutput, route)) {
+                return CheckResult.wrong("The route is incorrect. Wrong stations were displayed. " +
+                    "Maybe the wrong way was chosen.");
+            }
+
+            return CheckResult.correct();
+        }
+
+        boolean assertRoute(String[] stations, String[] correctRoute) {
+            int index = 0;
+            for (String station : stations) {
+                if (!station.toLowerCase().trim().contains(correctRoute[index].toLowerCase())) {
+                    return true;
+                }
+                index++;
+            }
+            return false;
+        }
+    }
+  learner_created: false
+feedback_link: https://hyperskill.org/learn/step/10346#comment
+status: Solved
+feedback:
+  message: Congratulations!
+  time: "Thu, 08 Dec 2022 09:38:42 UTC"
+record: 5

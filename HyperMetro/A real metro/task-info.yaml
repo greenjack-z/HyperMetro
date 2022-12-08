@@ -1,0 +1,533 @@
+type: edu
+files:
+- name: src/metro/Main.java
+  visible: true
+  text: |
+    package metro;
+
+    public class Main {
+        public static void main(String[] args) {
+            String fileName;
+            if (args.length > 0) {
+                fileName = args[0];
+            } else {
+                fileName = "metro.json";
+            }
+            FileHandler fileHandler = new FileHandler(fileName);
+            fileHandler.readFile();
+            Metro metro = new Metro(fileHandler.getParseAdapter().getLines());
+            CommandHandler commandHandler = new CommandHandler(metro);
+            commandHandler.read();
+        }
+    }
+  learner_created: false
+- name: src/metro/Line.java
+  visible: true
+  text: |-
+    package metro;
+
+    public class Line {
+        private String name;
+        private final Station head;
+        private final Station tail;
+
+        public Line(String name) {
+            this.name = name;
+            head = new Station("depot");
+            tail = new Station("depot");
+            head.setNext(tail);
+            tail.setPrevious(head);
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void addStation(String name) {
+            Station newStation = new Station(name);
+            tail.getPrevious().setNext(newStation);
+            newStation.setPrevious(tail.getPrevious());
+            newStation.setNext(tail);
+            tail.setPrevious(newStation);
+        }
+
+        public void addHead(String name) {
+            Station newStation = new Station(name);
+            head.getNext().setPrevious(newStation);
+            newStation.setNext(head.getNext());
+            newStation.setPrevious(head);
+            head.setNext(newStation);
+        }
+
+        public void remove(String name) {
+            Station toRemove = getStation(name);
+            toRemove.getPrevious().setNext(toRemove.getNext());
+            toRemove.getNext().setPrevious(toRemove.getPrevious());
+        }
+
+        public Station getStation(String name) {
+            Station current = head;
+            while (current.getNext() != null) {
+                if (current.getName().equals(name)) {
+                    return current;
+                }
+                current = current.getNext();
+            }
+            return null;
+        }
+
+        @Override
+        public String toString() {
+            Station current = head;
+            StringBuilder stringBuilder = new StringBuilder();
+            while(current.getNext().getNext() != null) {
+                stringBuilder.append(current)
+                        .append(" - ")
+                        .append(current.getNext())
+                        .append(" - ")
+                        .append(current.getNext().getNext())
+                        .append("\n");
+                current = current.getNext();
+            }
+            return stringBuilder.toString();
+        }
+    }
+  learner_created: false
+- name: src/metro/Station.java
+  visible: true
+  text: |
+    package metro;
+
+    public class Station {
+        private final String name;
+        private Station next;
+        private Station previous;
+
+        public Station(String name) {
+            this.name = name;
+            next = null;
+            previous = null;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public Station getNext() {
+            return next;
+        }
+
+        public Station getPrevious() {
+            return previous;
+        }
+
+        public void setNext(Station next) {
+            this.next = next;
+        }
+
+        public void setPrevious(Station previous) {
+            this.previous = previous;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
+  learner_created: false
+- name: src/metro/Metro.java
+  visible: true
+  text: |
+    package metro;
+
+    import java.util.List;
+
+    public class Metro {
+        private final List<Line> lines;
+
+        public Metro(List<Line> lines) {
+            this.lines = lines;
+        }
+
+        public List<Line> getLines() {
+            return lines;
+        }
+
+        public Line getLine(String lineName) {
+            for (Line line : lines) {
+                if (line.getName().equals(lineName)) {
+                    return line;
+                }
+            }
+            return null;
+        }
+    }
+  learner_created: false
+- name: src/metro/FileHandler.java
+  visible: true
+  text: |
+    package metro;
+
+    import com.google.gson.Gson;
+    import com.google.gson.JsonIOException;
+    import com.google.gson.JsonSyntaxException;
+    import com.google.gson.reflect.TypeToken;
+
+    import java.io.*;
+    import java.nio.file.Files;
+    import java.nio.file.Path;
+    import java.util.Map;
+
+    public class FileHandler {
+        private final Path path;
+        private ParseAdapter parseAdapter;
+
+        FileHandler(String filename) {
+            path = Path.of(filename);
+            parseAdapter = new ParseAdapter();
+        }
+
+        public ParseAdapter getParseAdapter() {
+            return parseAdapter;
+        }
+
+        public boolean readFile() {
+            try (BufferedReader bufferedReader = Files.newBufferedReader(path)) {
+                Gson gson = new Gson();
+                TypeToken<Map<String, Map<Integer, String>>> typeToken = new TypeToken<>(){};
+                parseAdapter.setLines(gson.fromJson(bufferedReader, typeToken.getType()));
+                return true;
+            } catch (JsonIOException e) {
+                return false;
+            } catch (JsonSyntaxException e) {
+                System.out.println("Incorrect file");
+                return false;
+            } catch (IOException e) {
+                System.out.println("Error! Such a file doesn't exist!");
+                return false;
+            }
+        }
+    }
+  learner_created: false
+- name: src/metro/Commands.java
+  visible: true
+  text: |
+    package metro;
+
+    public enum Commands {
+        UNKNOWN ("null"),
+        EXIT ("/exit"),
+        OUTPUT ("/output"),
+        APPEND ("/append"),
+        ADD_HEAD ("/add-head"),
+        REMOVE("/remove");
+
+        private final String inputString;
+
+        Commands(String input) {
+            inputString = input;
+        }
+
+        public String getInputString() {
+            return inputString;
+        }
+    }
+  learner_created: false
+- name: src/metro/CommandHandler.java
+  visible: true
+  text: "package metro;\n\nimport java.io.InputStream;\nimport java.util.ArrayList;\n\
+    import java.util.List;\nimport java.util.Scanner;\n\npublic class CommandHandler\
+    \ {\n    Scanner scanner;\n    Metro metro;\n    String INVALID_COMMAND = \"Invalid\
+    \ command.\";\n    String INVALID_PARAMETERS_COUNT = \"Invalid parameters count\
+    \ %d instead of %d.%n\";\n    String NO_LINE = \"No such line %s in metro.%n\"\
+    ;\n    String NO_STATION = \"No such station %s at line %s.%n\";\n    \n    CommandHandler(Metro\
+    \ metro) {\n        this.metro = metro;\n        scanner = new Scanner(System.in);\n\
+    \    }\n    \n    public void read() {\n        List<String> parameters;\n   \
+    \     parameters = parseInput(scanner.nextLine());\n        Commands actualCommand\
+    \ = parseCommand(parameters.remove(0));\n        switch (actualCommand) {\n  \
+    \          case UNKNOWN -> System.out.println(INVALID_COMMAND);\n            case\
+    \ APPEND -> append(\"tail\", parameters);\n            case ADD_HEAD -> append(\"\
+    head\", parameters);\n            case REMOVE -> remove(parameters);\n       \
+    \     case OUTPUT -> output(parameters);\n            case EXIT -> System.exit(1);\n\
+    \        }\n        read();\n    }\n\n    private void output(List<String> parameters)\
+    \ {\n        if (isParametersCountOK(parameters, 1)) {\n            String lineName\
+    \ = parameters.get(0);\n            if (isLinePresent(lineName)) {\n         \
+    \       System.out.println(metro.getLine(lineName));\n            }\n        }\n\
+    \    }\n\n    private void append(String side, List<String> parameters) {\n  \
+    \      if (isParametersCountOK(parameters, 2)) {\n            String lineName\
+    \ = parameters.get(0);\n            if (isLinePresent(lineName)) {\n         \
+    \       Line line = metro.getLine(lineName);\n                String stationName\
+    \ = parameters.get(1);\n                if (side.equals(\"tail\")) {\n       \
+    \             line.addStation(stationName);\n                } else {\n      \
+    \              line.addHead(stationName);\n                }\n            }\n\
+    \        }\n    }\n\n    private void remove(List<String> parameters) {\n    \
+    \    if (isParametersCountOK(parameters, 2)) {\n            String lineName =\
+    \ parameters.get(0);\n            if (isLinePresent(lineName)) {\n           \
+    \     Line line = metro.getLine(lineName);\n                String stationName\
+    \ = parameters.get(1);\n                if (isStationPresent(line, stationName))\
+    \ {\n                    line.remove(stationName);\n                }\n      \
+    \      }\n\n        }\n    }\n\n    private boolean isParametersCountOK(List<String>\
+    \ parameters, int count) {\n        if (parameters.size() != count) {\n      \
+    \      System.out.println(INVALID_PARAMETERS_COUNT);\n            return false;\n\
+    \        }\n        return true;\n    }\n\n    private boolean isLinePresent(String\
+    \ lineName) {\n         if (metro.getLine(lineName) == null) {\n             System.out.printf(NO_LINE,\
+    \ lineName);\n             return false;\n         }\n         return true;\n\
+    \    }\n\n    private boolean isStationPresent(Line line, String stationName)\
+    \ {\n        Station station = line.getStation(stationName);\n        if (station\
+    \ == null) {\n            System.out.printf(NO_STATION, stationName, line.getName());\n\
+    \            return false;\n        }\n        return true;\n    }\n\n    private\
+    \ Commands parseCommand(String input) {\n        for (Commands command : Commands.values())\
+    \ {\n            if (command.getInputString().equals(input)){\n              \
+    \  return command;\n            }\n        }\n        return Commands.UNKNOWN;\n\
+    \    }\n\n    private List<String> parseInput(String line) {\n        List<String>\
+    \ list = new ArrayList<>();\n        try(Scanner scanner = new Scanner(line))\
+    \ {\n            while (scanner.hasNext()) {\n                String token = scanner.next();\n\
+    \                if (token.matches(\"\\\"\\\\w+\")) {\n                    String\
+    \ appendix;\n                    do {\n                        appendix = scanner.next();\n\
+    \                        token = new StringBuilder().append(token).append(\" \"\
+    ).append(appendix).toString();\n                    } while (!appendix.matches(\"\
+    \\\\w+\\\"\"));\n                }\n                list.add(token.replace(\"\\\
+    \"\", \"\"));\n            }\n        }\n        return list;\n    }\n}\n"
+  learner_created: false
+- name: src/metro/ParseAdapter.java
+  visible: true
+  text: |
+    package metro;
+
+    import java.util.*;
+
+    public class ParseAdapter {
+
+        private Map<String, Map<Integer, String>> lines;
+        ParseAdapter() {
+            lines = new HashMap<>();
+        }
+
+        public void setLines(Map<String, Map<Integer, String>> lines) {
+            this.lines = lines;
+        }
+
+        public List<Line> getLines() {
+            List<Line> list = new ArrayList<>();
+            for (Map.Entry<String, Map<Integer, String>> entry : lines.entrySet()) {
+                Line line = new Line(entry.getKey());
+                entry.getValue().values().forEach(line::addStation);
+                list.add(line);
+            }
+            return list;
+        }
+    }
+  learner_created: false
+- name: test/baltimore.json
+  visible: false
+  learner_created: false
+- name: test/lausanne.json
+  visible: false
+  learner_created: false
+- name: test/prague.json
+  visible: false
+  learner_created: false
+- name: test/Tests.java
+  visible: false
+  text: |-
+    import org.hyperskill.hstest.dynamic.DynamicTest;
+    import org.hyperskill.hstest.exception.outcomes.WrongAnswer;
+    import org.hyperskill.hstest.stage.StageTest;
+    import org.hyperskill.hstest.testcase.CheckResult;
+    import org.hyperskill.hstest.testing.TestedProgram;
+
+    public class Tests extends StageTest<String> {
+        // test from the previous stage with one line
+        @DynamicTest(order = 1)
+        CheckResult test1() {
+
+            TestedProgram main = new TestedProgram();
+            main.start("./test/baltimore.json");
+            String output = main.execute("/output \"SubwayLink\"").trim();
+
+            checkDepots(output);
+            checkOutputLength(output, 16);
+            assertStations(output, new String[]{"Owings Mills", "Old Court", "Milford Mill", "Reiserstown Plaza",
+                "Rogers Avenue", "West Cold Spring", "Mondawmin", "Penn North", "Uptown", "State Center",
+                "Lexington Market", "Charles Center", "Shot Tower/Market Place", "Johns Hopkins Hospital"});
+
+            return CheckResult.correct();
+        }
+
+        // test of example
+        @DynamicTest(order = 2)
+        CheckResult test2() {
+
+            TestedProgram main = new TestedProgram();
+            main.start("./test/lausanne.json");
+            String output = main.execute("/output \"m1\"").trim();
+
+            checkDepots(output);
+            checkOutputLength(output, 17);
+            assertStations(output, new String[]{"Renes—Gare", "Epenex", "Crochy", "Cerisaie",
+                "Bassenges", "EPFL", "UNL—Sorge", "Mouline", "UNL—Chemberonne", "Bourdonnette", "Melley",
+                "Provence", "Montelly", "Vigie", "Lausanne—Flon"});
+
+            output = main.execute("/output \"m2\"");
+            checkDepots(output);
+            checkOutputLength(output, 16);
+            assertStations(output, new String[]{"Croisettes", "Vennes", "Fourmi", "Sallaz", "CHUV", "Ours",
+                "Riponne M.Bejart", "Bessieres", "Lausanne—Flon", "Lausanne Gare CFF", "Grancy", "Delices", "Jourdils",
+                "Ouchy—Olympique"});
+
+            return CheckResult.correct();
+        }
+
+        // example test pt.2 (with addition)
+        @DynamicTest(order = 3)
+        CheckResult test2_1() {
+
+            TestedProgram main = new TestedProgram();
+            main.start("./test/lausanne.json");
+
+            // added a station to the end of the line
+            main.execute("/append \"m1\" \"Test station 1\"");
+            String output = main.execute("/output \"m1\"");
+
+            checkDepots(output);
+            checkOutputLength(output, 18);
+            assertStations(output, new String[]{"Renes—Gare", "Epenex", "Crochy", "Cerisaie",
+                "Bassenges", "EPFL", "UNL—Sorge", "Mouline", "UNL—Chemberonne", "Bourdonnette", "Melley",
+                "Provence", "Montelly", "Vigie", "Lausanne—Flon", "Test station 1"});
+
+            // added another one
+            main.execute("/append \"m1\" \"Test station 2\"");
+            output = main.execute("/output \"m1\"");
+
+            checkDepots(output);
+            checkOutputLength(output, 19);
+            assertStations(output, new String[]{"Renes—Gare", "Epenex", "Crochy", "Cerisaie",
+                "Bassenges", "EPFL", "UNL—Sorge", "Mouline", "UNL—Chemberonne", "Bourdonnette", "Melley",
+                "Provence", "Montelly", "Vigie", "Lausanne—Flon", "Test station 1", "Test station 2"});
+
+            // added one station to the beginning of the line
+            main.execute("/add-head \"m1\" \"Head\"");
+            output = main.execute("/output \"m1\"");
+
+            checkDepots(output);
+            checkOutputLength(output, 20);
+            assertStations(output, new String[]{"Head", "Renes—Gare", "Epenex", "Crochy", "Cerisaie",
+                "Bassenges", "EPFL", "UNL—Sorge", "Mouline", "UNL—Chemberonne", "Bourdonnette", "Melley",
+                "Provence", "Montelly", "Vigie", "Lausanne—Flon", "Test station 1", "Test station 2"});
+
+            return CheckResult.correct();
+        }
+
+        // not existing file check
+        @DynamicTest(order = 4)
+        CheckResult test4() {
+            TestedProgram main = new TestedProgram();
+            String output = main.start("tHiS_fIlE_DoEs_nOt_ExIsT.txt");
+            if (output.trim().length() == 0) {
+                return CheckResult.wrong("The program did not print anything when the file was not exist. ");
+            }
+            if (output.toLowerCase().startsWith("depot") || output.toLowerCase().endsWith("depot")) {
+                return CheckResult.wrong("It looks like the program did not print an error message when the file was not exist.");
+            }
+            return CheckResult.correct();
+        }
+
+        // test of a case from the example
+        @DynamicTest(order = 5)
+        CheckResult test5() {
+
+            TestedProgram main = new TestedProgram();
+            main.start("./test/prague.json");
+
+            String[][] stations = new String[][]{
+                {"Nemocnice Motol", null}, {"Petriny", null}, {"Nadrazi Veleslavin", null}, {"Borislavka", null},
+                {"Dejvicka", null}, {"Hradcanska", null}, {"Malostranska", null}, {"Staromestska", null},
+                {"Mustek", "Linka B"}, {"Muzeum", "Linka C"}, {"Namesti Miru", null}, {"Jiriho z Podebrad", null},
+                {"Flora", null}, {"Zelivskeho", null}, {"Strasnicka", null}, {"Skalka", null}, {"Depo Hostivar", null}
+            };
+
+            String output = main.execute("/output \"Linka A\"");
+            checkDepots(output);
+            checkOutputLength(output, 19);
+            assertWithTransfer(output, stations);
+
+            return CheckResult.correct();
+        }
+
+        @DynamicTest(order = 6)
+        CheckResult test6() {
+
+            TestedProgram main = new TestedProgram();
+            main.start("./test/prague.json");
+
+            String[][] stations = new String[][]{{"Nemocnice Motol", null}, {"Petriny", "Linka C"},
+                {"Nadrazi Veleslavin", null}, {"Borislavka", null}, {"Dejvicka", null}, {"Hradcanska", null},
+                {"Malostranska", null}, {"Staromestska", null}, {"Mustek", "Linka B"}, {"Muzeum", "Linka C"},
+                {"Namesti Miru", null}, {"Jiriho z Podebrad", null}, {"Flora", null}, {"Zelivskeho", null},
+                {"Strasnicka", null}, {"Skalka", null}, {"Depo Hostivar", null}};
+
+            main.execute("/connect \"Linka C\" \"I.P.Pavlova\" \"Linka A\" \"Petriny\"");
+
+            String output = main.execute("/output \"Linka A\"");
+            checkDepots(output);
+            checkOutputLength(output, 19);
+            assertWithTransfer(output, stations);
+
+            return CheckResult.correct();
+        }
+
+        // checks for "depot" at the start and at the end
+        void checkDepots(String output) {
+            output = output.trim().toLowerCase();
+            if (!output.startsWith("depot")) {
+                throw new WrongAnswer("Your output should start with 'depot'.");
+            } else if (!output.endsWith("depot")) {
+                throw new WrongAnswer("Your output should end with 'depot'.");
+            }
+        }
+
+        // checks number of stations in output
+        void checkOutputLength(String output, int correctLength) {
+            int length = output.trim().split("\n").length;
+            if (length != correctLength) {
+                throw new WrongAnswer("You output contains wrong number of lines.\n" +
+                    "Expected: " + correctLength + " lines\n" +
+                    "Your output: " + length + " lines");
+            }
+        }
+
+        // checks stations
+        void assertStations(String output, String[] stations) {
+
+            String[] sOutput = output.trim().split("\n");
+
+            for (int i = 0; i < stations.length; i++) {
+                if (!sOutput[i + 1].equals(stations[i])) {
+                    throw new WrongAnswer("Can't find station '" + stations[i] + "' in the line number " + (i + 2));
+                }
+            }
+        }
+
+        void assertWithTransfer(String output, String[][] stations) {
+
+            String[] sOutput = output.split("\n");
+
+            for (int i = 0; i < stations.length; i++) {
+                String currentLine = sOutput[i + 1].toLowerCase().trim();
+                String currentStation = stations[i][0];
+                String currentTransfer = stations[i][1];
+                if (currentTransfer == null) {
+                    if (!currentLine.equals(currentStation.toLowerCase())) {
+                        throw new WrongAnswer("There is an error in your program's reply. Some stations were not found.");
+                    }
+                } else if (!currentLine.contains(currentStation.toLowerCase()) ||
+                    !currentLine.contains(currentTransfer.toLowerCase())) {
+                    throw new WrongAnswer("Expected transfer to '" + currentTransfer + "' from '" + currentStation + "' station.");
+                }
+            }
+        }
+    }
+  learner_created: false
+feedback_link: https://hyperskill.org/learn/step/10343#comment
+status: Solved
+record: 2
